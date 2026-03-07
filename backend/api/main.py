@@ -45,6 +45,10 @@ def _save_report(body: dict, fill_result: dict, autofill_time_ms: int) -> str:
             "autofill_time_ms":            autofill_time_ms,
             "total_time_ms":               passport_time_ms + g28_time_ms + autofill_time_ms,
         },
+        "verification_checks": {
+            "passport": passport_trace.get("verification_checks", []),
+            "g28":      g28_trace.get("verification_checks", []),
+        },
         "completion_metrics": {
             "fields_with_values":    len(filled),
             "fields_without_values": len(skipped),

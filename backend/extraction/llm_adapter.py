@@ -145,8 +145,9 @@ class OpenAIExtractor(DocumentExtractor):
                     "mrz_raw": {"line1": mrz_line1, "line2": mrz_line2},
                 }
 
-            verification_warnings = verify_passport_fields(beneficiary)
-            trace["verification_warnings"] = verification_warnings
+            v = verify_passport_fields(beneficiary)
+            trace["verification_warnings"] = v["warnings"]
+            trace["verification_checks"]   = v["checks"]
 
             return ExtractionResult(data={"beneficiary": beneficiary}, success=True, trace=trace)
         except Exception as e:
@@ -168,11 +169,13 @@ class OpenAIExtractor(DocumentExtractor):
             if mime_type == "application/pdf":
                 attorney = extract_g28_acroform(document_bytes)
                 if attorney is not None:
+                    v = verify_g28_fields(attorney)
                     trace = {
                         "attempted_methods": ["acroform"],
                         "final_method": "acroform",
                         "warnings": [],
-                        "verification_warnings": verify_g28_fields(attorney),
+                        "verification_warnings": v["warnings"],
+                        "verification_checks":   v["checks"],
                     }
                     return ExtractionResult(data={"attorney": attorney}, success=True, trace=trace)
                 # AcroForm extraction failed — fall back to LLM vision
@@ -194,7 +197,9 @@ class OpenAIExtractor(DocumentExtractor):
 
             raw = self._call_vision(G28_EXTRACTION_PROMPT, image_bytes, image_mime)
             attorney = _build_canonical_section(raw, G28_FIELDS, source="g28")
-            trace["verification_warnings"] = verify_g28_fields(attorney)
+            v = verify_g28_fields(attorney)
+            trace["verification_warnings"] = v["warnings"]
+            trace["verification_checks"]   = v["checks"]
             return ExtractionResult(data={"attorney": attorney}, success=True, trace=trace)
         except Exception as e:
             return ExtractionResult(

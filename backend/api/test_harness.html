@@ -226,26 +226,37 @@
       ];
 
       let html = `<div class="vsummary-title">Verification Summary</div>`;
-      let anyWarnings = false;
 
       for (const { key, label } of docs) {
         const resp = extractedResponses[key];
         if (!resp) continue;
+        const checks   = resp.trace?.verification_checks   || [];
         const warnings = resp.trace?.verification_warnings || [];
-        html += `<div class="vsummary-doc"><span class="vsummary-doc-label">${label}:</span> `;
-        if (warnings.length === 0) {
-          html += `<span class="vsummary-ok">no verification warnings</span>`;
+
+        html += `<div class="vsummary-doc">`;
+        html += `<span class="vsummary-doc-label">${label}</span>`;
+
+        if (checks.length === 0) {
+          html += ` <span style="color:#999">— no checks run</span>`;
         } else {
-          anyWarnings = true;
-          html += `${warnings.length} warning${warnings.length > 1 ? 's' : ''}`;
-          html += warnings.map(w => `<div class="vsummary-item">⚠ ${escHtml(w)}</div>`).join('');
+          html += `<div style="margin-top:4px">`;
+          for (const c of checks) {
+            if (c.status === 'pass') {
+              html += `<div class="vsummary-ok">✓ ${escHtml(c.check)}</div>`;
+            } else {
+              html += `<div class="vsummary-item">⚠ ${escHtml(c.check)}`;
+              if (c.message) html += ` — ${escHtml(c.message)}`;
+              html += `</div>`;
+            }
+          }
+          html += `</div>`;
         }
+
         html += `</div>`;
       }
 
       el.innerHTML = html;
       el.classList.add('visible');
-      _ = anyWarnings; // available for future use
     }
 
     ['passport', 'g28'].forEach(type => {
