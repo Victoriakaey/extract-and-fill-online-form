@@ -4,6 +4,22 @@ Extracts structured fields from a passport and a G-28 attorney form, then uses b
 
 ---
 
+## Table of Contents
+
+- [Quick Overview](#quick-overview)
+- [Pipeline](#pipeline)
+- [Project Structure](#project-structure)
+- [Setup](#setup)
+- [Usage](#usage)
+- [Architecture](#architecture)
+- [Reliability & Hallucination Safeguards](#reliability--hallucination-safeguards)
+- [Canonical Schema](#canonical-schema)
+- [Observability](#observability)
+- [Design Decisions](#design-decisions)
+- [Limitations](#limitations)
+
+---
+
 ## Quick Overview
 
 | What | How |
@@ -72,6 +88,96 @@ Extracts structured fields from a passport and a G-28 attorney form, then uses b
               │  verification, timing.     │
               └───────────────────────────┘
 ```
+
+---
+
+## Project Structure
+
+```
+backend/
+  api/
+    main.py              FastAPI app. Endpoints: GET /, POST /extract/passport,
+                         POST /extract/g28, POST /fill. Handles timing, report saving.
+    test_harness.html    Single-page UI. Extraction, verification summary, autofill
+                         trigger, result display. Served at /.
+
+  extraction/
+    interface.py         ExtractionResult dataclass + DocumentExtractor ABC.
+    llm_adapter.py       OpenAIExtractor. Passport and G-28 extraction, MRZ override
+                         logic, verification wiring.
+    mrz_extractor.py     TD3 MRZ checksum validation. Returns field overrides on pass,
+                         None on fail.
+    g28_acroform.py      AcroForm widget extraction for fillable PDFs. Two-pass:
+                         name-based field mapping, then value-type validation.
+    prompts.py           LLM extraction prompts for passport and G-28.
+    verification.py      Deterministic post-extraction checks. Returns per-check
+                         pass/warning results and warning strings.
+
+  automation/
+    form_filler.py       Playwright form fill. Thread-and-queue pattern: returns fill
+                         result immediately; browser stays open in daemon thread.
+
+  evaluation/
+    metrics.py           Offline utility: compute_field_accuracy(expected, extracted).
+                         Not used in live pipeline.
+
+tests/
+  test_verification.py   Unit tests for all verification rules.
+  test_acroform.py       Unit tests for AcroForm extraction helpers.
+  test_api.py            API smoke tests for input validation and error handling.
+
+docs/
+  schema-and-mapping.md  Canonical schema and form field selector mapping.
+  implementation-plan.md Build plan (reference only).
+
+example-input/           Sample passport and G-28 files for local testing.
+reports/                 Auto-generated JSON reports (one per autofill run).
+```
+
+---
+
+## Setup
+
+**Requirements:** Python 3.11+, conda, OpenAI API key.
+
+```bash
+# 1. Create environment
+conda env create -f environment.yml
+conda activate alma
+
+# 2. Install Playwright browser
+playwright install chromium
+
+# 3. Configure environment
+cp .env.example .env
+# Set LLM_API_KEY=sk-... in .env
+
+# 4. Start server
+uvicorn backend.api.main:app --reload
+
+# 5. Open UI
+# Navigate to http://localhost:8000
+```
+
+> **Note:** `brew install poppler` is only needed for the scanned-PDF fallback path (PDF → JPEG → LLM vision). The primary path for fillable G-28 PDFs uses AcroForm extraction and has no system dependencies.
+
+### Running tests
+
+```bash
+python -m pytest tests/ -v
+```
+
+Tests cover verification rules, AcroForm extraction utilities, and API input validation. No LLM API key or running server required — all tests use in-memory inputs or the FastAPI test client.
+
+---
+
+## Usage
+
+1. Upload a passport image (JPEG or PNG) and click **Extract Passport**.
+2. Upload a G-28 (PDF, JPEG, or PNG) and click **Extract G-28**.
+3. Review the **Verification Summary** — per-check pass/fail for each document.
+4. Click **Fill Form** — Chromium opens and populates all mapped fields.
+5. Review the populated form in the browser. The form is never submitted automatically.
 
 ---
 
@@ -192,83 +298,6 @@ After every autofill run, `reports/report_<timestamp>.json` captures:
 - `pipeline_metrics` — per-stage timing: extraction, autofill, total
 - `completion_metrics` — field counts, warning counts, error count
 - `status` — extraction and autofill success flags
-
----
-
-## Project Structure
-
-```
-backend/
-  api/
-    main.py              FastAPI app. Endpoints: GET /, POST /extract/passport,
-                         POST /extract/g28, POST /fill. Handles timing, report saving.
-    test_harness.html    Single-page UI. Extraction, verification summary, autofill
-                         trigger, result display. Served at /.
-
-  extraction/
-    interface.py         ExtractionResult dataclass + DocumentExtractor ABC.
-    llm_adapter.py       OpenAIExtractor. Passport and G-28 extraction, MRZ override
-                         logic, verification wiring.
-    mrz_extractor.py     TD3 MRZ checksum validation. Returns field overrides on pass,
-                         None on fail.
-    g28_acroform.py      AcroForm widget extraction for fillable PDFs. Two-pass:
-                         name-based field mapping, then value-type validation.
-    prompts.py           LLM extraction prompts for passport and G-28.
-    verification.py      Deterministic post-extraction checks. Returns per-check
-                         pass/warning results and warning strings.
-
-  automation/
-    form_filler.py       Playwright form fill. Thread-and-queue pattern: returns fill
-                         result immediately; browser stays open in daemon thread.
-
-  evaluation/
-    metrics.py           Offline utility: compute_field_accuracy(expected, extracted).
-                         Not used in live pipeline.
-
-docs/
-  schema-and-mapping.md  Canonical schema and form field selector mapping.
-  implementation-plan.md Build plan (reference only).
-
-example-input/           Sample passport and G-28 files for local testing.
-reports/                 Auto-generated JSON reports (one per autofill run).
-```
-
----
-
-## Setup
-
-**Requirements:** Python 3.11+, conda, OpenAI API key.
-
-```bash
-# 1. Create environment
-conda env create -f environment.yml
-conda activate alma
-
-# 2. Install Playwright browser
-playwright install chromium
-
-# 3. Configure environment
-cp .env.example .env
-# Set LLM_API_KEY=sk-... in .env
-
-# 4. Start server
-uvicorn backend.api.main:app --reload
-
-# 5. Open UI
-# Navigate to http://localhost:8000
-```
-
-> **Note:** `brew install poppler` is only needed for the scanned-PDF fallback path (PDF → JPEG → LLM vision). The primary path for fillable G-28 PDFs uses AcroForm extraction and has no system dependencies.
-
----
-
-## Usage
-
-1. Upload a passport image (JPEG or PNG) and click **Extract Passport**.
-2. Upload a G-28 (PDF, JPEG, or PNG) and click **Extract G-28**.
-3. Review the **Verification Summary** — per-check pass/fail for each document.
-4. Click **Fill Form** — Chromium opens and populates all mapped fields.
-5. Review the populated form in the browser. The form is never submitted automatically.
 
 ---
 
