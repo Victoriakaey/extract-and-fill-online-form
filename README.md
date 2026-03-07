@@ -20,47 +20,57 @@ Extracts structured fields from a passport and a G-28 attorney form, then uses b
 ## Pipeline
 
 ```
-Upload passport + G-28
-        │
-        ▼
-┌────────────────────────────────────┐
-│         Extraction                 │
-│                                    │
-│  Passport:                         │
-│    LLM vision → raw MRZ lines      │
-│    TD3 checksum validation         │
-│    Pass → MRZ values override LLM  │
-│    Fail → LLM visual values used   │
-│                                    │
-│  G-28 (PDF):                       │
-│    AcroForm widget extraction      │
-│    LLM vision fallback if needed   │
-│                                    │
-│  G-28 (image):                     │
-│    LLM vision directly             │
-└────────────────────────────────────┘
-        │
-        ▼
-┌────────────────────────────────────┐
-│         Verification               │
-│  Rule-based checks on extracted    │
-│  values. Appends warnings to       │
-│  fields. Never blocks pipeline.    │
-└────────────────────────────────────┘
-        │
-        ▼
-UI shows extraction results + verification summary
-        │
-        ▼
-┌────────────────────────────────────┐
-│         Form Automation            │
-│  Playwright fills form →           │
-│  result returned immediately →     │
-│  browser stays open for review     │
-└────────────────────────────────────┘
-        │
-        ▼
-JSON report saved to reports/
+                    Upload passport + G-28
+                            │
+          ┌─────────────────┴──────────────────┐
+          │                                    │
+  ┌───────▼────────┐                  ┌────────▼───────┐
+  │   PASSPORT     │                  │     G-28       │
+  │                │                  │                │
+  │ LLM vision     │                  │ 1. AcroForm    │
+  │ ↓              │                  │    extraction  │
+  │ MRZ lines      │                  │    (primary)   │
+  │ ↓              │                  │                │
+  │ TD3 checksum   │                  │ 2. LLM vision  │
+  │ Pass → MRZ     │                  │    (fallback,  │
+  │  overrides LLM │                  │    scanned PDF │
+  │ Fail → LLM     │                  │    or image)   │
+  │  values used   │                  │                │
+  └───────┬────────┘                  └────────┬───────┘
+          │                                    │
+          └─────────────────┬──────────────────┘
+                            │
+              ┌─────────────▼─────────────┐
+              │       VERIFICATION         │
+              │  Deterministic rule checks │
+              │  on extracted values.      │
+              │  Warnings appended to      │
+              │  fields and trace.         │
+              │  Pipeline never blocked.   │
+              └─────────────┬─────────────┘
+                            │
+              ┌─────────────▼─────────────┐
+              │     HUMAN REVIEW GATE      │
+              │  UI shows extraction +     │
+              │  per-check verification    │
+              │  summary before fill.      │
+              └─────────────┬─────────────┘
+                            │  User clicks Fill Form
+              ┌─────────────▼─────────────┐
+              │      FORM AUTOMATION       │
+              │  Playwright fills form.    │
+              │  Result returned via       │
+              │  queue immediately.        │
+              │  Browser stays open for    │
+              │  human review.             │
+              └─────────────┬─────────────┘
+                            │
+              ┌─────────────▼─────────────┐
+              │        JSON REPORT         │
+              │  reports/report_<ts>.json  │
+              │  Full extraction, trace,   │
+              │  verification, timing.     │
+              └───────────────────────────┘
 ```
 
 ---
@@ -84,6 +94,44 @@ Runs post-extraction on every response. Checks are deterministic and rule-based 
 ### Human review boundary
 
 Playwright fills the form and stops. The browser stays open. The populated form is the review step — the user sees the exact values before deciding whether to submit. The `fill_form` function uses a thread-and-queue pattern: the fill thread signals completion via a `queue.Queue` as soon as field population ends, then waits for browser close independently. The HTTP response is returned immediately without blocking on browser lifecycle.
+
+---
+
+## Reliability & Hallucination Safeguards
+
+LLM vision is the least reliable part of this pipeline. The system is explicitly designed to limit how much the LLM can affect the final output and to make any LLM-derived values visible and auditable.
+
+**1. Deterministic extraction is always preferred over LLM**
+
+AcroForm widget values (G-28) and MRZ-derived values (passport) are read directly from structured data — no OCR, no model inference. The LLM is only invoked when no deterministic path is available or when it fails.
+
+**2. MRZ checksum validation is all-or-nothing**
+
+The passport MRZ encodes key fields with built-in TD3 checksums. If every checksum passes, MRZ-derived values override LLM visual values at `confidence: 1.0`. If any checksum fails, the entire MRZ is discarded — no partial values are used. A partially valid MRZ is treated as untrustworthy.
+
+**3. The model never controls its own confidence or source label**
+
+The `source` field (`"passport"` or `"g28"`) is injected by the adapter after the model call — the model cannot set it. The `confidence` field is set to `null` whenever `value` is `null`, enforced in code, not inferred from model output. This prevents the model from assigning high confidence to missing or hallucinated values.
+
+**4. Post-extraction verification catches common failure modes**
+
+A deterministic rule layer runs on every extraction result before it reaches the UI:
+- Passport number format (alphanumeric, expected length)
+- Date ordering (DOB < issue date < expiry)
+- Sex field value (must be M, F, or X)
+- Email and ZIP code format
+- Bar number ↔ licensing authority consistency
+- Form label contamination in name and address fields
+
+Checks produce per-field `warnings` and a structured `checks` list in the trace. Nothing is silently discarded — every check result is recorded and visible in the UI and the JSON report.
+
+**5. Human review is mandatory before submission**
+
+The populated browser form is the review artifact. Playwright fills the fields and stops — the form is never submitted automatically. The user sees the exact values that would be submitted and can correct anything before acting.
+
+**6. Every run is fully traceable**
+
+Each extraction response includes a `trace` recording which methods were attempted, which succeeded, raw MRZ lines, MRZ validation outcome, and all verification check results. The JSON report captures the complete pipeline state — extraction, verification, autofill, and timing — for every run.
 
 ---
 
