@@ -105,8 +105,8 @@ async def fill_form_endpoint(body: dict):
 
     Expects: {"beneficiary": {...}, "attorney": {...}}
 
-    The browser stays open after filling so the user can review the fields.
-    The form is never submitted. This call blocks until the user closes the browser.
+    Returns as soon as filling completes. The browser stays open in a background
+    thread for human review. The form is never submitted.
     """
     loop = asyncio.get_running_loop()
     try:
