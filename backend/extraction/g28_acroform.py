@@ -29,7 +29,8 @@ G28_PRIMARY_MAP = {
     "Line3d_State":                          "state",
     "Line3e_ZipCode":                        "zip_code",
     "Line3h_Country":                        "country",
-    "Line3g_PostalCode":                     "zip_code",       # international equivalent
+    "Line3g_PostalCode":                     "zip_code",       # international equivalent — first-wins in Pass 1,
+                                                               # so Line3e wins if present; Line3g used otherwise
     "Line4_DaytimeTelephoneNumber":          "daytime_phone",
     "Line5_DaytimeTelephoneNumber":          "daytime_phone",  # alternate field naming
     "Line5_MobileTelephoneNumber":           "mobile_phone",
@@ -104,10 +105,16 @@ def _field(value, confidence, warnings: list) -> dict:
     }
 
 
-def _read_widgets(pdf_bytes: bytes) -> dict:
-    """Read all AcroForm widget annotations. Returns {raw_field_name: raw_value}."""
+def _read_widgets(pdf_bytes: bytes) -> tuple[dict, int]:
+    """
+    Read all AcroForm widget annotations.
+
+    Returns (raw, skipped) where raw is {field_name: raw_value} and skipped
+    is the count of annotations that raised an exception during parsing.
+    """
     reader = pypdf.PdfReader(BytesIO(pdf_bytes))
     raw = {}
+    skipped = 0
     for page in reader.pages:
         annots = page.get("/Annots")
         if not annots:
@@ -122,20 +129,23 @@ def _read_widgets(pdf_bytes: bytes) -> dict:
                 if name:
                     raw[name] = value
             except Exception:
-                continue
-    return raw
+                skipped += 1
+    return raw, skipped
 
 
 # ---------------------------------------------------------------------------
 # Main extraction function
 # ---------------------------------------------------------------------------
 
-def extract_g28_acroform(pdf_bytes: bytes) -> dict | None:
+def extract_g28_acroform(pdf_bytes: bytes) -> tuple[dict, list[str]] | tuple[None, None]:
     """
     Extract G-28 attorney fields from PDF AcroForm widget annotations.
 
-    Returns a canonical attorney dict on success, or None if the PDF does not
-    contain enough AcroForm data (caller should fall back to LLM extraction).
+    Returns (attorney, parse_warnings) on success, or (None, None) if the PDF
+    does not contain enough AcroForm data (caller should fall back to LLM extraction).
+
+    parse_warnings contains any non-fatal issues encountered during annotation
+    parsing (e.g. skipped annotations due to malformed PDF objects).
 
     subject_to_restrictions is represented as bool:
       False = attorney is NOT subject to disciplinary restrictions
@@ -143,12 +153,19 @@ def extract_g28_acroform(pdf_bytes: bytes) -> dict | None:
       None  = checkbox state could not be determined
     """
     try:
-        raw = _read_widgets(pdf_bytes)
+        raw, skipped = _read_widgets(pdf_bytes)
     except Exception:
-        return None
+        return None, None
 
     if not raw:
-        return None
+        return None, None
+
+    parse_warnings: list[str] = []
+    if skipped:
+        parse_warnings.append(
+            f"AcroForm parsing skipped {skipped} annotation(s) due to malformed PDF objects — "
+            "some fields may be missing"
+        )
 
     # -----------------------------------------------------------------------
     # Pass 1: primary name-based mapping
@@ -239,6 +256,6 @@ def extract_g28_acroform(pdf_bytes: bytes) -> dict | None:
     # -----------------------------------------------------------------------
     non_null = sum(1 for v in attorney.values() if v.get("value") is not None)
     if non_null < 3:
-        return None
+        return None, None
 
-    return attorney
+    return attorney, parse_warnings

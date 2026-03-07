@@ -3,6 +3,8 @@ import json
 import os
 from io import BytesIO
 
+from PIL import Image
+
 from dotenv import load_dotenv
 from openai import OpenAI
 from pdf2image import convert_from_bytes
@@ -61,12 +63,28 @@ def _to_base64(image_bytes: bytes) -> str:
 
 def _pdf_to_image_bytes(pdf_bytes: bytes) -> bytes:
     """
-    Convert first page of PDF to JPEG bytes for LLM vision input.
+    Convert all pages of a PDF to a single vertically-stitched JPEG for LLM vision input.
     Used only when AcroForm extraction fails (scanned/non-fillable PDF fallback).
+
+    All pages are included so that G-28 fields spanning multiple pages are visible
+    to the model. Pages are stacked vertically at their original width.
     """
-    images = convert_from_bytes(pdf_bytes, first_page=1, last_page=1)
+    images = convert_from_bytes(pdf_bytes)
+    if len(images) == 1:
+        buf = BytesIO()
+        images[0].save(buf, format="JPEG")
+        return buf.getvalue()
+
+    width    = max(img.width for img in images)
+    height   = sum(img.height for img in images)
+    combined = Image.new("RGB", (width, height), color=(255, 255, 255))
+    y_offset = 0
+    for img in images:
+        combined.paste(img, (0, y_offset))
+        y_offset += img.height
+
     buf = BytesIO()
-    images[0].save(buf, format="JPEG")
+    combined.save(buf, format="JPEG", quality=85)
     return buf.getvalue()
 
 
@@ -92,7 +110,12 @@ class OpenAIExtractor(DocumentExtractor):
             response_format={"type": "json_object"},
             max_tokens=2000,
         )
-        return json.loads(response.choices[0].message.content)
+        if not response.choices:
+            raise ValueError("LLM API returned no choices in response")
+        content = response.choices[0].message.content
+        if content is None:
+            raise ValueError("LLM API returned a choice with null content")
+        return json.loads(content)
 
     def extract_passport(self, image_bytes: bytes) -> ExtractionResult:
         """
@@ -166,13 +189,13 @@ class OpenAIExtractor(DocumentExtractor):
         """
         try:
             if mime_type == "application/pdf":
-                attorney = extract_g28_acroform(document_bytes)
+                attorney, parse_warnings = extract_g28_acroform(document_bytes)
                 if attorney is not None:
                     v = verify_g28_fields(attorney)
                     trace = {
                         "attempted_methods": ["acroform"],
                         "final_method": "acroform",
-                        "warnings": [],
+                        "warnings": parse_warnings,
                         "verification_warnings": v["warnings"],
                         "verification_checks":   v["checks"],
                     }

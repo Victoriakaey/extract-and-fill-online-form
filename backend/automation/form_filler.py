@@ -166,5 +166,9 @@ def fill_form(canonical: dict) -> dict:
     thread = threading.Thread(target=_browser_thread, daemon=True)
     thread.start()
 
-    # Block only until filling is complete, not until browser is closed
-    return result_queue.get()
+    # Block only until filling is complete, not until browser is closed.
+    # Timeout guards against the browser thread crashing before it can put a result.
+    try:
+        return result_queue.get(timeout=120)
+    except queue.Empty:
+        return {"filled": [], "skipped": [], "errors": ["Browser thread did not return a result within 120 seconds"]}

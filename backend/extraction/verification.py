@@ -11,7 +11,7 @@ Rules:
 import re
 from datetime import date
 
-_PASSPORT_NUMBER_RE = re.compile(r'^[A-Z0-9]{6,9}$')
+_PASSPORT_NUMBER_RE = re.compile(r'^[A-Z0-9]{6,12}$')
 _EMAIL_RE = re.compile(r'^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$')
 _ZIP_RE = re.compile(r'^\d{5}(-\d{4})?$')
 
@@ -92,6 +92,9 @@ def verify_passport_fields(data: dict) -> dict:
         else:
             warned("date_ordering", "passport date ordering inconsistent",
                    ["date_of_birth", "date_of_issue", "date_of_expiration"])
+    elif any([dob, doi, doe]):
+        missing = [k for k, v in [("date_of_birth", dob), ("date_of_issue", doi), ("date_of_expiration", doe)] if not v]
+        warned("date_ordering", f"date ordering check skipped — missing: {', '.join(missing)}")
 
     return {"warnings": warnings, "checks": checks}
 

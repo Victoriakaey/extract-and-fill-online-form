@@ -1,6 +1,8 @@
 import asyncio
 import json
+import os
 import time
+import uuid
 from datetime import datetime
 from functools import partial
 from pathlib import Path
@@ -13,11 +15,16 @@ from backend.extraction.llm_adapter import OpenAIExtractor
 
 REPORTS_DIR = Path(__file__).parent.parent.parent / "reports"
 
+if not os.getenv("LLM_API_KEY"):
+    raise RuntimeError(
+        "LLM_API_KEY is not set. Copy .env.example to .env and add your OpenAI API key."
+    )
+
 
 def _save_report(body: dict, fill_result: dict, autofill_time_ms: int) -> str:
     REPORTS_DIR.mkdir(exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    path = REPORTS_DIR / f"report_{timestamp}.json"
+    path = REPORTS_DIR / f"report_{timestamp}_{uuid.uuid4().hex[:8]}.json"
 
     passport_resp = body.get("passport") or {}
     g28_resp      = body.get("g28") or {}
@@ -72,6 +79,9 @@ extractor = OpenAIExtractor()
 ALLOWED_PASSPORT_TYPES = {"image/jpeg", "image/png"}
 ALLOWED_G28_TYPES = {"application/pdf", "image/jpeg", "image/png"}
 
+MAX_PASSPORT_SIZE = 10 * 1024 * 1024   # 10 MB
+MAX_G28_SIZE      = 20 * 1024 * 1024   # 20 MB
+
 
 @app.get("/", response_class=HTMLResponse)
 async def index():
@@ -88,6 +98,9 @@ async def extract_passport(file: UploadFile = File(...)):
         )
 
     image_bytes = await file.read()
+    if len(image_bytes) > MAX_PASSPORT_SIZE:
+        raise HTTPException(status_code=413, detail=f"File too large. Maximum size is {MAX_PASSPORT_SIZE // (1024*1024)} MB.")
+
     t0 = time.perf_counter()
     result = extractor.extract_passport(image_bytes)
     extraction_time_ms = round((time.perf_counter() - t0) * 1000)
@@ -98,16 +111,43 @@ async def extract_passport(file: UploadFile = File(...)):
     return {"data": result.data, "trace": result.trace, "extraction_time_ms": extraction_time_ms}
 
 
+def _validate_fill_body(body: dict) -> None:
+    """
+    Validate that the /fill payload has the expected structure before running Playwright.
+    Raises HTTPException(422) on any structural violation.
+    """
+    for section in ("passport", "g28"):
+        if section not in body:
+            raise HTTPException(status_code=422, detail=f"Missing required section: '{section}'")
+        if not isinstance(body[section], dict):
+            raise HTTPException(status_code=422, detail=f"'{section}' must be an object")
+        data = body[section].get("data")
+        if not isinstance(data, dict):
+            raise HTTPException(status_code=422, detail=f"'{section}.data' must be an object")
+    beneficiary = body["passport"]["data"].get("beneficiary")
+    if not isinstance(beneficiary, dict):
+        raise HTTPException(status_code=422, detail="'passport.data.beneficiary' must be an object")
+    attorney = body["g28"]["data"].get("attorney")
+    if not isinstance(attorney, dict):
+        raise HTTPException(status_code=422, detail="'g28.data.attorney' must be an object")
+
+
 @app.post("/fill")
 async def fill_form_endpoint(body: dict):
     """
     Open the target form in a browser and fill it from the canonical extraction object.
 
-    Expects: {"passport": {"data": ..., "trace": ...}, "g28": {"data": ..., "trace": ...}}
+    Expects: {"passport": {"data": {"beneficiary": {...}}, "trace": ...},
+              "g28":      {"data": {"attorney":    {...}}, "trace": ...}}
 
     Returns as soon as filling completes. The browser stays open in a background
     thread for human review. The form is never submitted.
+
+    Design note: human review occurs after autofill (review-after-fill), not before.
+    The populated browser form is the review artifact. There is no pre-fill editing
+    step — corrections must be made directly in the browser or by re-running extraction.
     """
+    _validate_fill_body(body)
     loop = asyncio.get_running_loop()
     try:
         t0 = time.perf_counter()
@@ -129,6 +169,9 @@ async def extract_g28(file: UploadFile = File(...)):
         )
 
     document_bytes = await file.read()
+    if len(document_bytes) > MAX_G28_SIZE:
+        raise HTTPException(status_code=413, detail=f"File too large. Maximum size is {MAX_G28_SIZE // (1024*1024)} MB.")
+
     t0 = time.perf_counter()
     result = extractor.extract_g28(document_bytes, file.content_type)
     extraction_time_ms = round((time.perf_counter() - t0) * 1000)
