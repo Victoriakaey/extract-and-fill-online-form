@@ -63,7 +63,6 @@ def _pdf_to_image_bytes(pdf_bytes: bytes) -> bytes:
     """
     Convert first page of PDF to JPEG bytes for LLM vision input.
     Used only when AcroForm extraction fails (scanned/non-fillable PDF fallback).
-    V1.5: this path may be replaced by pdfplumber structured parsing.
     """
     images = convert_from_bytes(pdf_bytes, first_page=1, last_page=1)
     buf = BytesIO()
@@ -91,7 +90,7 @@ class OpenAIExtractor(DocumentExtractor):
                 }
             ],
             response_format={"type": "json_object"},
-            max_tokens=1200,
+            max_tokens=2000,
         )
         return json.loads(response.choices[0].message.content)
 

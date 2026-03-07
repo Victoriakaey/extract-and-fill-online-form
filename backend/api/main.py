@@ -103,7 +103,7 @@ async def fill_form_endpoint(body: dict):
     """
     Open the target form in a browser and fill it from the canonical extraction object.
 
-    Expects: {"beneficiary": {...}, "attorney": {...}}
+    Expects: {"passport": {"data": ..., "trace": ...}, "g28": {"data": ..., "trace": ...}}
 
     Returns as soon as filling completes. The browser stays open in a background
     thread for human review. The form is never submitted.
