@@ -91,6 +91,42 @@
     .readiness .missing { color: #999; }
     .fill-result { margin-top: 14px; font-size: 12px; line-height: 1.6; }
     .fill-result .r-label { color: #555; font-weight: bold; }
+    .result-section { margin-bottom: 16px; }
+    .result-section-title {
+      font-weight: bold;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #444;
+      margin-bottom: 4px;
+    }
+    .result-row { margin: 2px 0; }
+    .result-item { margin: 2px 0 2px 12px; color: #555; }
+    .result-warn { margin: 2px 0 2px 12px; color: #a06000; }
+    .result-ok   { color: #080; }
+    .result-err  { color: #c00; }
+    .vsummary {
+      background: #fffbf0;
+      border: 1px solid #e8d8a0;
+      border-radius: 4px;
+      padding: 12px 16px;
+      font-size: 12px;
+      margin-bottom: 24px;
+      display: none;
+    }
+    .vsummary.visible { display: block; }
+    .vsummary-title {
+      font-weight: bold;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #7a6000;
+      margin-bottom: 8px;
+    }
+    .vsummary-doc { margin-bottom: 8px; }
+    .vsummary-doc-label { color: #555; font-weight: bold; }
+    .vsummary-item { color: #a06000; margin-left: 12px; }
+    .vsummary-ok { color: #080; margin-left: 12px; }
     .loading-msg {
       display: none;
       margin-top: 12px;
@@ -140,6 +176,8 @@
 
   <hr class="divider">
 
+  <div class="vsummary" id="verification-summary"></div>
+
   <div class="fill-section">
     <h2>Form Automation</h2>
     <div class="readiness" id="fill-readiness">
@@ -156,24 +194,58 @@
   </div>
 
   <script>
-    // Tracks extracted canonical data across both documents
-    const extracted = { beneficiary: null, attorney: null };
+    // Tracks full extraction responses (data + trace) for both documents
+    const extractedResponses = { passport: null, g28: null };
 
     function updateFillReadiness() {
       const rPassport = document.getElementById('r-passport');
       const rG28      = document.getElementById('r-g28');
       const fillBtn   = document.getElementById('fill-btn');
 
-      if (extracted.beneficiary) {
+      if (extractedResponses.passport) {
         rPassport.textContent = '✓ Passport — extracted';
         rPassport.className = 'ready';
       }
-      if (extracted.attorney) {
+      if (extractedResponses.g28) {
         rG28.textContent = '✓ G-28 — extracted';
         rG28.className = 'ready';
       }
 
-      fillBtn.disabled = !(extracted.beneficiary && extracted.attorney);
+      fillBtn.disabled = !(extractedResponses.passport && extractedResponses.g28);
+
+      if (extractedResponses.passport || extractedResponses.g28) {
+        renderVerificationSummary();
+      }
+    }
+
+    function renderVerificationSummary() {
+      const el = document.getElementById('verification-summary');
+      const docs = [
+        { key: 'passport', label: 'Passport' },
+        { key: 'g28',      label: 'G-28' },
+      ];
+
+      let html = `<div class="vsummary-title">Verification Summary</div>`;
+      let anyWarnings = false;
+
+      for (const { key, label } of docs) {
+        const resp = extractedResponses[key];
+        if (!resp) continue;
+        const warnings = resp.trace?.verification_warnings || [];
+        html += `<div class="vsummary-doc"><span class="vsummary-doc-label">${label}:</span> `;
+        if (warnings.length === 0) {
+          html += `<span class="vsummary-ok">no verification warnings</span>`;
+        } else {
+          anyWarnings = true;
+          html += `${warnings.length} warning${warnings.length > 1 ? 's' : ''}`;
+          html += warnings.map(w => `<div class="vsummary-item">⚠ ${escHtml(w)}</div>`).join('');
+        }
+        html += `</div>`;
+      }
+
+      el.innerHTML = html;
+      el.classList.add('visible');
+      _ = anyWarnings; // available for future use
     }
 
     ['passport', 'g28'].forEach(type => {
@@ -251,13 +323,9 @@
           setStatus(status, 'Extraction complete.', 'success');
           renderSummary(summary, body.trace || {});
           result.textContent = JSON.stringify(body.data, null, 2);
-          // Store extracted data for form fill
-          if (type === 'passport' && body.data.beneficiary) {
-            extracted.beneficiary = body.data.beneficiary;
-          }
-          if (type === 'g28' && body.data.attorney) {
-            extracted.attorney = body.data.attorney;
-          }
+          // Store full response for form fill and verification summary
+          if (type === 'passport') extractedResponses.passport = body;
+          if (type === 'g28')      extractedResponses.g28      = body;
           updateFillReadiness();
         }
       } catch (e) {
@@ -291,6 +359,11 @@
         html += warnings.map(w => `<div class="summary-warn">⚠ ${w}</div>`).join('');
       }
 
+      const verificationWarnings = trace.verification_warnings || [];
+      if (verificationWarnings.length) {
+        html += verificationWarnings.map(w => `<div class="summary-warn">⚠ [verification] ${w}</div>`).join('');
+      }
+
       if (trace.mrz_raw) {
         html += `<div class="summary-mrz">MRZ line 1 (${trace.mrz_raw.line1.length} chars): ${escHtml(trace.mrz_raw.line1) || '(empty)'}</div>`;
         html += `<div class="summary-mrz">MRZ line 2 (${trace.mrz_raw.line2.length} chars): ${escHtml(trace.mrz_raw.line2) || '(empty)'}</div>`;
@@ -316,7 +389,7 @@
         const res = await fetch('/fill', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ beneficiary: extracted.beneficiary, attorney: extracted.attorney }),
+          body: JSON.stringify({ passport: extractedResponses.passport, g28: extractedResponses.g28 }),
         });
         const data = await res.json();
         if (!res.ok) {
@@ -336,10 +409,78 @@
     }
 
     function renderFillResult(data) {
-      const { filled = [], skipped = [], errors = [] } = data;
-      let html = `<span class="r-label">Fields with values (${filled.length}):</span> ${filled.join(', ') || '—'}<br>`;
-      if (skipped.length) html += `<span class="r-label">Fields without values (${skipped.length}):</span> ${skipped.join(', ')}<br>`;
-      if (errors.length)  html += `<span class="r-label" style="color:#c00">Errors (${errors.length}):</span> ${errors.join('; ')}`;
+      const { filled = [], skipped = [], errors = [], autofill_time_ms, report_path } = data;
+      const pTrace = extractedResponses.passport?.trace || {};
+      const gTrace = extractedResponses.g28?.trace     || {};
+      const fmt    = ms => typeof ms === 'number' ? (ms / 1000).toFixed(2) + 's' : '—';
+
+      const passportMs = extractedResponses.passport?.extraction_time_ms;
+      const g28Ms      = extractedResponses.g28?.extraction_time_ms;
+      const fillMs     = autofill_time_ms;
+      const totalMs    = (passportMs != null && g28Ms != null && fillMs != null)
+        ? passportMs + g28Ms + fillMs : null;
+
+      const allProcWarnings  = [...(pTrace.warnings || []), ...(gTrace.warnings || [])];
+      const allVerifWarnings = [...(pTrace.verification_warnings || []), ...(gTrace.verification_warnings || [])];
+
+      const statusText = errors.length === 0
+        ? `<span class="result-ok">Autofill completed successfully</span>`
+        : filled.length > 0
+          ? `<span class="result-err">Autofill completed with ${errors.length} error${errors.length > 1 ? 's' : ''}</span>`
+          : `<span class="result-err">Autofill failed</span>`;
+
+      let html = '';
+
+      // --- Main summary ---
+      html += `<div class="result-section">`;
+      html += `<div class="result-row">${statusText}</div>`;
+      html += `<div class="result-row">${filled.length} fields populated, ${skipped.length} left blank, ${errors.length} errors</div>`;
+      if (allVerifWarnings.length) {
+        html += allVerifWarnings.map(w => `<div class="result-warn">⚠ ${escHtml(w)}</div>`).join('');
+      }
+      html += `<div class="result-row" style="color:#666;font-style:italic;margin-top:4px">Please review the populated form in the browser before submission.</div>`;
+      html += `</div>`;
+
+      if (report_path) {
+        html += `<div class="result-row" style="margin-bottom:10px"><span class="r-label">Report saved:</span> ${escHtml(report_path)}</div>`;
+      }
+
+      // --- Collapsible details ---
+      const passportMethod = pTrace.mrz_validation_passed
+        ? 'LLM vision + MRZ validation'
+        : pTrace.attempted_methods?.includes('mrz') ? 'LLM vision (MRZ failed)' : 'LLM vision';
+      const g28Method = gTrace.final_method === 'acroform'
+        ? 'AcroForm extraction'
+        : gTrace.attempted_methods?.includes('acroform') ? 'LLM vision (AcroForm fallback)' : 'LLM vision';
+
+      html += `<details style="margin-top:4px;font-size:12px">`;
+      html += `<summary style="cursor:pointer;color:#666;user-select:none">Debug details</summary>`;
+      html += `<div style="margin-top:10px">`;
+
+      if (skipped.length) {
+        html += `<div class="result-section-title">Skipped fields</div>`;
+        html += skipped.map(f => `<div class="result-item">○ ${escHtml(f)}</div>`).join('');
+        html += `<br>`;
+      }
+      if (errors.length) {
+        html += `<div class="result-section-title">Errors</div>`;
+        html += errors.map(e => `<div class="result-item result-err">✕ ${escHtml(e)}</div>`).join('');
+        html += `<br>`;
+      }
+      if (allProcWarnings.length) {
+        html += `<div class="result-section-title">Processing warnings</div>`;
+        html += allProcWarnings.map(w => `<div class="result-warn">⚠ ${escHtml(w)}</div>`).join('');
+        html += `<br>`;
+      }
+
+      html += `<div class="result-section-title">Pipeline timing</div>`;
+      html += `<div class="result-row">Passport: ${fmt(passportMs)} (${passportMethod})</div>`;
+      html += `<div class="result-row">G-28: ${fmt(g28Ms)} (${g28Method})</div>`;
+      html += `<div class="result-row">Autofill: ${fmt(fillMs)} (browser automation)</div>`;
+      html += `<div class="result-row">Total: ${fmt(totalMs)}</div>`;
+
+      html += `</div></details>`;
+
       return html;
     }
 

@@ -1,0 +1,280 @@
+{
+  "generated_at": "2026-03-06T17:04:21.428815",
+  "passport": {
+    "data": {
+      "beneficiary": {
+        "last_name": {
+          "value": "LEE",
+          "confidence": 1,
+          "source": "passport",
+          "warnings": []
+        },
+        "first_name": {
+          "value": "SUYEON",
+          "confidence": 1,
+          "source": "passport",
+          "warnings": []
+        },
+        "middle_name": {
+          "value": null,
+          "confidence": null,
+          "source": "passport",
+          "warnings": [
+            "Middle name not present"
+          ]
+        },
+        "passport_number": {
+          "value": "M70689098",
+          "confidence": 1,
+          "source": "passport",
+          "warnings": []
+        },
+        "country_of_issue": {
+          "value": "REPUBLIC OF KOREA",
+          "confidence": 1,
+          "source": "passport",
+          "warnings": []
+        },
+        "nationality": {
+          "value": "REPUBLIC OF KOREA",
+          "confidence": 1,
+          "source": "passport",
+          "warnings": []
+        },
+        "date_of_birth": {
+          "value": "1985-07-02",
+          "confidence": 1,
+          "source": "passport",
+          "warnings": []
+        },
+        "place_of_birth": {
+          "value": null,
+          "confidence": null,
+          "source": "passport",
+          "warnings": [
+            "Place of birth not present"
+          ]
+        },
+        "sex": {
+          "value": "F",
+          "confidence": 1,
+          "source": "passport",
+          "warnings": []
+        },
+        "date_of_issue": {
+          "value": "2014-04-15",
+          "confidence": 1,
+          "source": "passport",
+          "warnings": []
+        },
+        "date_of_expiration": {
+          "value": "2024-04-15",
+          "confidence": 1,
+          "source": "passport",
+          "warnings": []
+        }
+      }
+    },
+    "trace": {
+      "attempted_methods": [
+        "mrz",
+        "llm_vision"
+      ],
+      "final_method": "llm_vision",
+      "mrz_validation_passed": false,
+      "warnings": [
+        "MRZ validation failed \u2014 using LLM visual values",
+        "MRZ lines wrong length \u2014 line1=50 chars, line2=39 chars (expected 44 each)"
+      ],
+      "mrz_raw": {
+        "line1": "PMKORLEE<<SUYEON<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<",
+        "line2": "M70689098SKR850702F24041525471017627884"
+      },
+      "verification_warnings": []
+    },
+    "extraction_time_ms": 12638
+  },
+  "g28": {
+    "data": {
+      "attorney": {
+        "daytime_phone": {
+          "value": null,
+          "confidence": null,
+          "source": "g28",
+          "warnings": []
+        },
+        "middle_name": {
+          "value": null,
+          "confidence": null,
+          "source": "g28",
+          "warnings": []
+        },
+        "first_name": {
+          "value": "Barbara",
+          "confidence": 1,
+          "source": "g28",
+          "warnings": []
+        },
+        "last_name": {
+          "value": "Smith",
+          "confidence": 1,
+          "source": "g28",
+          "warnings": []
+        },
+        "street_address": {
+          "value": "545 Bryant Street",
+          "confidence": 1,
+          "source": "g28",
+          "warnings": []
+        },
+        "apt_ste_flr_number": {
+          "value": null,
+          "confidence": null,
+          "source": "g28",
+          "warnings": []
+        },
+        "city": {
+          "value": "Palo Alto",
+          "confidence": 1,
+          "source": "g28",
+          "warnings": []
+        },
+        "state": {
+          "value": "CA",
+          "confidence": 1,
+          "source": "g28",
+          "warnings": []
+        },
+        "zip_code": {
+          "value": "94301",
+          "confidence": 1,
+          "source": "g28",
+          "warnings": []
+        },
+        "country": {
+          "value": "United States of America",
+          "confidence": 1,
+          "source": "g28",
+          "warnings": []
+        },
+        "email": {
+          "value": "immigration@tryalma.ai",
+          "confidence": 0.85,
+          "source": "g28",
+          "warnings": [
+            "relocated from 'mobile_phone': email pattern found in phone field"
+          ]
+        },
+        "mobile_phone": {
+          "value": null,
+          "confidence": null,
+          "source": "g28",
+          "warnings": [
+            "value relocated \u2014 see email field"
+          ]
+        },
+        "bar_number": {
+          "value": "12083456",
+          "confidence": 1,
+          "source": "g28",
+          "warnings": []
+        },
+        "licensing_authority": {
+          "value": "State Bar of California",
+          "confidence": 1,
+          "source": "g28",
+          "warnings": []
+        },
+        "firm_name": {
+          "value": "Alma Legal Services PC",
+          "confidence": 1,
+          "source": "g28",
+          "warnings": []
+        },
+        "subject_to_restrictions": {
+          "value": false,
+          "confidence": 1,
+          "source": "g28",
+          "warnings": []
+        },
+        "apt_ste_flr_type": {
+          "value": null,
+          "confidence": null,
+          "source": "g28",
+          "warnings": []
+        },
+        "online_account_number": {
+          "value": null,
+          "confidence": null,
+          "source": "g28",
+          "warnings": [
+            "field not found in PDF"
+          ]
+        }
+      }
+    },
+    "trace": {
+      "attempted_methods": [
+        "acroform"
+      ],
+      "final_method": "acroform",
+      "warnings": [],
+      "verification_warnings": []
+    },
+    "extraction_time_ms": 24
+  },
+  "autofill": {
+    "fields_with_values": [
+      "beneficiary.last_name",
+      "beneficiary.first_name",
+      "beneficiary.passport_number",
+      "beneficiary.country_of_issue",
+      "beneficiary.nationality",
+      "beneficiary.date_of_birth",
+      "beneficiary.sex",
+      "beneficiary.date_of_issue",
+      "beneficiary.date_of_expiration",
+      "attorney.last_name",
+      "attorney.first_name",
+      "attorney.street_address",
+      "attorney.city",
+      "attorney.state",
+      "attorney.zip_code",
+      "attorney.country",
+      "attorney.email",
+      "attorney.licensing_authority",
+      "attorney.bar_number",
+      "attorney.subject_to_restrictions",
+      "attorney.firm_name"
+    ],
+    "fields_without_values": [
+      "beneficiary.middle_name",
+      "beneficiary.place_of_birth",
+      "attorney.online_account_number",
+      "attorney.middle_name",
+      "attorney.apt_ste_flr_type",
+      "attorney.apt_ste_flr_number",
+      "attorney.daytime_phone",
+      "attorney.mobile_phone"
+    ],
+    "errors": []
+  },
+  "pipeline_metrics": {
+    "passport_extraction_time_ms": 12638,
+    "g28_extraction_time_ms": 24,
+    "autofill_time_ms": 11996,
+    "total_time_ms": 24658
+  },
+  "completion_metrics": {
+    "fields_with_values": 21,
+    "fields_without_values": 8,
+    "processing_warnings": 2,
+    "verification_warnings": 0,
+    "errors": 0
+  },
+  "status": {
+    "passport_extraction_success": true,
+    "g28_extraction_success": true,
+    "autofill_success": true
+  }
+}

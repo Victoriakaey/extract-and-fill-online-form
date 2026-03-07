@@ -11,6 +11,7 @@ from .g28_acroform import extract_g28_acroform
 from .interface import DocumentExtractor, ExtractionResult
 from .mrz_extractor import parse_mrz
 from .prompts import PASSPORT_EXTRACTION_PROMPT, G28_EXTRACTION_PROMPT
+from .verification import verify_passport_fields, verify_g28_fields
 
 load_dotenv()
 
@@ -144,6 +145,9 @@ class OpenAIExtractor(DocumentExtractor):
                     "mrz_raw": {"line1": mrz_line1, "line2": mrz_line2},
                 }
 
+            verification_warnings = verify_passport_fields(beneficiary)
+            trace["verification_warnings"] = verification_warnings
+
             return ExtractionResult(data={"beneficiary": beneficiary}, success=True, trace=trace)
         except Exception as e:
             return ExtractionResult(
@@ -168,6 +172,7 @@ class OpenAIExtractor(DocumentExtractor):
                         "attempted_methods": ["acroform"],
                         "final_method": "acroform",
                         "warnings": [],
+                        "verification_warnings": verify_g28_fields(attorney),
                     }
                     return ExtractionResult(data={"attorney": attorney}, success=True, trace=trace)
                 # AcroForm extraction failed — fall back to LLM vision
@@ -189,6 +194,7 @@ class OpenAIExtractor(DocumentExtractor):
 
             raw = self._call_vision(G28_EXTRACTION_PROMPT, image_bytes, image_mime)
             attorney = _build_canonical_section(raw, G28_FIELDS, source="g28")
+            trace["verification_warnings"] = verify_g28_fields(attorney)
             return ExtractionResult(data={"attorney": attorney}, success=True, trace=trace)
         except Exception as e:
             return ExtractionResult(
