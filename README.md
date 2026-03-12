@@ -2,6 +2,8 @@
 
 Extracts structured fields from a passport and a G-28 attorney form, then uses browser automation to populate a target web form. The browser stays open after filling for human review. No submission occurs automatically.
 
+A 10 minute video demo which includes a brief explanation of the design and workflow is available here: [Demo Video](https://www.loom.com/share/e956743827ee4398a790a4d51af51f30).
+
 ---
 
 ## Table of Contents
